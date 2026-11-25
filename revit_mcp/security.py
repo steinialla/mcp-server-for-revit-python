@@ -4,6 +4,20 @@ import json
 from pyrevit import routes
 from .pairing import validate_request
 
+# Session trust (2026-11-25): the user can switch the review off until Revit closes, e.g. with BIMman's
+# "Trust MCP" button. It is a variable of the Revit process only, so it can't outlive the session and no file or
+# setting keeps it. Pairing is still checked on every request.
+TRUST_VARIABLE = "REVIT_MCP_TRUST_SESSION"
+
+
+def session_trusted():
+    """True when the review is switched off for this Revit session."""
+    try:
+        from System import Environment
+        return Environment.GetEnvironmentVariable(TRUST_VARIABLE) == "1"
+    except Exception:
+        return False
+
 
 def authorize_request(request, action=None):
     """Return a denial response, or None when the request may proceed."""
@@ -14,7 +28,7 @@ def authorize_request(request, action=None):
         return routes.make_response(data={"error": "Callbacks are not supported."}, status=400)
     if not validate_request(request.headers):
         return routes.make_response(data={"error": "Bridge is disconnected or pairing is invalid."}, status=401)
-    if action:
+    if action and not session_trusted():
         from pyrevit import forms
         try:
             data = json.loads(request.data) if isinstance(request.data, str) else request.data
